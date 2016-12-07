@@ -2,19 +2,6 @@
 #include "nbind/api.h"  // for nbind::cbFunction type
 #include "nbind/nbind.h"
 
-class Signal;
-
-void update_handler(mapper_signal sig, mapper_id instance, const void *value,
-                    int count, mapper_timetag_t *tt)
-{
-    // get user data
-    void *user_data = mapper_signal_user_data(sig);
-    if (!user_data)
-        return;
-    nbind::cbFunction *callback = (nbind::cbFunction*)user_data;
-    (*callback)();
-};
-
 class Signal : public mapper::Signal
 {
 public:
@@ -34,6 +21,21 @@ public:
         mapper::Signal::update(val);
         return (*this);
     }
+    const char *name()
+    {
+        return (const char*)(*this);
+    }
+};
+
+void update_handler(mapper_signal sig, mapper_id instance, const void *value,
+                    int count, mapper_timetag_t *tt)
+{
+        // get user data
+    void *user_data = mapper_signal_user_data(sig);
+    if (!user_data)
+        return;
+    nbind::cbFunction *callback = (nbind::cbFunction*)user_data;
+    (*callback)(Signal(sig), *(int*)value);
 };
 
 class Device : public mapper::Device
@@ -145,7 +147,7 @@ NBIND_CLASS(Signal) {
 ////        method(set_property);
 ////        method(remove_property);
 ////        method(id);
-////        method(name);
+    method(name);
 ////        method(direction);
 ////        method(type);
 ////        method(length);

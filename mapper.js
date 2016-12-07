@@ -5,7 +5,11 @@ var lib = nbind.init(__dirname).lib;
 //module.exports = binding.lib;
 
 dev = new lib.Device('foo');
-insig = dev.add_input_signal('in', 1, 'i', function() { console.log('js update handler');});
+insig = dev.add_input_signal('in', 1, 'i',
+                             function(sig, value) {
+                                 console.log('js update handler');
+                                 console.log('sig '+sig.name()+' = '+value);
+                             });
 outsig = dev.add_output_signal('out', 1, 'i');
 
 while (!dev.ready()) {
