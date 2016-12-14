@@ -3,17 +3,40 @@
 #include "nbind/nbind.h"
 
 void device_link_handler(mapper_device dev, mapper_link link,
-                         mapper_record_action action);
+                         mapper_record_event event);
 void device_map_handler(mapper_device dev, mapper_map map,
-                        mapper_record_action action);
+                        mapper_record_event event);
 void db_device_handler(mapper_database db, mapper_device dev,
-                       mapper_record_action action, const void *user);
+                       mapper_record_event event, const void *user);
 void db_signal_handler(mapper_database db, mapper_signal sig,
-                       mapper_record_action action, const void *user);
+                       mapper_record_event event, const void *user);
 void db_link_handler(mapper_database db, mapper_link link,
-                     mapper_record_action action, const void *user);
+                     mapper_record_event event, const void *user);
 void db_map_handler(mapper_database db, mapper_map map,
-                    mapper_record_action action, const void *user);
+                    mapper_record_event event, const void *user);
+
+class Timetag : public mapper::Timetag
+{
+public:
+    Timetag(unsigned long int sec, unsigned long int frac)
+        : mapper::Timetag(sec, frac) {}
+    Timetag(double sec) : mapper::Timetag(sec) {}
+    Timetag() : mapper::Timetag() {}
+
+    unsigned long int sec()
+        { return mapper::Timetag::sec(); }
+    void set_sec(unsigned long int sec)
+        { mapper::Timetag::set_sec(sec); }
+    unsigned long int frac()
+        { return mapper::Timetag::frac(); }
+    void set_frac(unsigned long int frac)
+        { mapper::Timetag::set_frac(frac); }
+
+    void now()
+        { mapper::Timetag::now(); }
+    double get_double()
+        { return (double)(*this); }
+};
 
 class Signal : public mapper::Signal
 {
@@ -66,19 +89,39 @@ void update_handler(mapper_signal sig, mapper_id instance, const void *value,
     (*callback)(Signal(sig), *(int*)value);
 };
 
+class Link : public mapper::Link
+{
+public:
+    Link(mapper_link link) : mapper::Link(link) {}
+    Link(mapper::Link link) : mapper::Link(link) {}
+    Link& clear_staged_properties()
+        { mapper::Link::clear_staged_properties(); return (*this); }
+    mapper_id id()
+        { return mapper::Link::id(); }
+    int num_maps()
+        { return mapper::Link::num_maps(); }
+    int num_properties()
+        { return mapper::Link::num_properties(); }
+    Link& push()
+        { mapper::Link::push(); return (*this); }
+};
+
 class Device : public mapper::Device
 {
 public:
-    Device(mapper_device dev) : mapper::Device(dev) {}
+//    Device(mapper_device dev) : mapper::Device(dev) { printf("dev.construct 1\n"); }
+    Device(mapper::Device dev) : mapper::Device(dev) { printf("dev.construct 1\n"); }
+
     Device(const char *name, mapper::Network& net) : mapper::Device(name, 0, net)
-        { mapper::Device::set_user_data(this); }
+        { mapper::Device::set_user_data(this); printf("dev.construct 2\n"); }
     Device(const char *name) : mapper::Device(name)
-        { mapper::Device::set_user_data(this); }
+        { mapper::Device::set_user_data(this); printf("dev.construct 3\n");}
     ~Device()
     {
         printf("destroying device!\n");
         mapper::Device::~Device();
     }
+
     Signal add_signal(mapper_direction dir, int num_instances, const char *name,
                       int length, const char *type, nbind::cbFunction& cb)
     {
@@ -142,25 +185,37 @@ public:
         mapper::Device::set_map_callback(device_map_handler);
         return (*this);
     }
+    Device& start_queue(const Timetag& tt)
+        { mapper::Device::start_queue(tt); return (*this); }
+    Device& send_queue(const Timetag& tt)
+        { mapper::Device::send_queue(tt); return (*this); }
+
+    mapper::Network network()
+        { return mapper::Device::network(); }
+    Signal signal_by_name(const char *name)
+        { return mapper::Device::signal(name); }
+    Signal signal_by_id(mapper_id id)
+        { return mapper::Device::signal(id); }
+
+    Link link(const Device& remote)
+        { return mapper::Device::link(remote); }
+
+    class Query : public mapper::Device::Query
+    {
+    public:
+        Query(mapper_device *query) : mapper::Device::Query(query)
+        { printf("Device::Query()\n"); }
+        Device next()
+        {
+            Device temp = (Device)(mapper::Device)(*this);
+            (*this)++;
+            return temp;
+        }
+    };
+
 //private:
     nbind::cbFunction *link_cb = 0;
     nbind::cbFunction *map_cb = 0;
-};
-
-class Link : public mapper::Link
-{
-public:
-    Link(mapper_link link) : mapper::Link(link) {}
-    Link& clear_staged_properties()
-        { mapper::Link::clear_staged_properties(); return (*this); }
-    mapper_id id()
-        { return mapper::Link::id(); }
-    int num_maps()
-        { return mapper::Link::num_maps(); }
-    int num_properties()
-        { return mapper::Link::num_properties(); }
-    Link& push()
-        { mapper::Link::push(); return (*this); }
 };
 
 class Map : public mapper::Map
@@ -204,32 +259,37 @@ public:
 };
 
 void device_link_handler(mapper_device dev, mapper_link link,
-                         mapper_record_action action)
+                         mapper_record_event event)
 {
     // get user data
     void *user_data = mapper_device_user_data(dev);
     if (!user_data)
         return;
     Device* cpp_dev = (Device*)user_data;
-    (*cpp_dev->link_cb)(Link(link), action);
+    (*cpp_dev->link_cb)(Link(link), event);
 }
 
 void device_map_handler(mapper_device dev, mapper_map map,
-                        mapper_record_action action)
+                        mapper_record_event event)
 {
     // get user data
     void *user_data = mapper_device_user_data(dev);
     if (!user_data)
         return;
     Device* cpp_dev = (Device*)user_data;
-    (*cpp_dev->map_cb)(Map(map), action);
+    (*cpp_dev->map_cb)(Map(map), event);
 }
 
 class Database : public mapper::Database
 {
 public:
-    Database(int flags) : mapper::Database(flags) {}
-    Database() : mapper::Database() {}
+    Database(int flags) : mapper::Database(flags) { printf("DB construct 1\n"); }
+    Database(const Database& orig) : mapper::Database(orig) { printf("DB construct 2\n"); }
+    Database() : mapper::Database() { printf("DB construct 3\n"); }
+    ~Database() {
+        printf("DB destructor!\n");
+        mapper::Database::~Database();
+    }
 
     int poll(int block_ms)
         { return mapper::Database::poll(block_ms); }
@@ -247,11 +307,11 @@ public:
         { return mapper::Database::num_maps(); }
 
 
-    Database& add_device_callback(nbind::cbFunction& cb)
+    void add_device_callback(nbind::cbFunction& cb)
     {
         void *callback = new nbind::cbFunction(cb);
         mapper::Database::add_device_callback(db_device_handler, callback);
-        return (*this);
+//        return (*this);
     }
     Database& add_signal_callback(nbind::cbFunction& cb)
     {
@@ -271,42 +331,59 @@ public:
         mapper::Database::add_map_callback(db_map_handler, callback);
         return (*this);
     }
+
+    Database& subscribe(const Device& dev)
+    {
+        mapper::Database::subscribe(dev);
+        return (*this);
+    }
+    Database& unsubscribe(const Device& dev)
+    {
+        mapper::Database::unsubscribe(dev);
+        return (*this);
+    }
+
+    Device::Query devices()
+    { mapper::Device::Query q = mapper::Database::devices();
+        printf("got query with mapper_device* %p\n", (mapper_device*)q);
+        return (Device::Query)q;
+    }
 };
 
 void db_device_handler(mapper_database db, mapper_device dev,
-                       mapper_record_action action, const void *user)
+                       mapper_record_event event, const void *user)
 {
     if (!user)
         return;
     nbind::cbFunction *callback = (nbind::cbFunction*)user;
-    (*callback)(Device(dev), action);
+    (*callback)(Device(dev), (int)event);
 }
 
 void db_signal_handler(mapper_database db, mapper_signal sig,
-                       mapper_record_action action, const void *user)
+                       mapper_record_event event, const void *user)
 {
     if (!user)
         return;
     nbind::cbFunction *callback = (nbind::cbFunction*)user;
-    (*callback)(Signal(sig), action);
+    (*callback)(Signal(sig), event);
 }
 
 void db_link_handler(mapper_database db, mapper_link link,
-                     mapper_record_action action, const void *user)
+                     mapper_record_event event, const void *user)
 {
     if (!user)
         return;
     nbind::cbFunction *callback = (nbind::cbFunction*)user;
-    (*callback)(Link(link), action);
+    (*callback)(Link(link), event);
 }
 
 void db_map_handler(mapper_database db, mapper_map map,
-                    mapper_record_action action, const void *user)
+                    mapper_record_event event, const void *user)
 {
     if (!user)
         return;
     nbind::cbFunction *callback = (nbind::cbFunction*)user;
-    (*callback)(Map(map), action);
+    (*callback)(Map(map), event);
 }
 
 namespace mapper {
@@ -321,18 +398,18 @@ namespace mapper {
         getter(group);
         getter(port);
     }
-
-    NBIND_CLASS(Timetag) {
-        construct<unsigned long int, unsigned long int>();
-        construct<double>();
-        construct<>();
-
-        getset(sec, set_sec);
-        getset(frac, set_frac);
-        method(now);
-    //        method(double);
-    }
 } // namespace mapper
+
+NBIND_CLASS(Timetag) {
+    construct<unsigned long int, unsigned long int>();
+    construct<double>();
+    construct<>();
+
+    getset(sec, set_sec);
+    getset(frac, set_frac);
+    method(now);
+    method(get_double);
+}
 
 NBIND_CLASS(Device) {
     construct<const char *, mapper::Network&>();
@@ -347,14 +424,16 @@ NBIND_CLASS(Device) {
     getter(num_properties);
     method(clear_staged_properties);
     method(push);
-//    method(network);
+    method(network);
     method(num_signals);
     method(num_links);
     method(num_maps);
-//    method(signal);
+    method(signal_by_name, "signal");
+    method(signal_by_id, "signal");
+//    method(signals);
     method(set_link_callback);
     method(set_map_callback);
-//    method(link);
+    method(link);
 //    method(links);
 //    method(maps);
     method(poll);
@@ -363,8 +442,13 @@ NBIND_CLASS(Device) {
     getter(id);
     getter(port);
     getter(ordinal);
-//    method(start_queue);
-//    method(send_queue);
+    method(start_queue);
+    method(send_queue);
+}
+
+NBIND_CLASS(Device::Query, Query) {
+    construct<mapper_device*>();
+    method(next);
 }
 
 NBIND_CLASS(Signal) {
@@ -428,13 +512,13 @@ NBIND_CLASS(Database) {
     method(poll);
     method(flush);
     method(request_devices);
-//    method(subscribe);
-//    method(unsubscribe);
+    method(subscribe);
+    method(unsubscribe);
     method(add_device_callback);
 //    method(remove_device_callback);
     method(num_devices);
 //    method(device);
-//    method(devices);
+    method(devices);
 //    method(add_signal_callback);
 //    method(remove_signal_callback);
     method(num_signals);
