@@ -5,12 +5,12 @@
             'sources': [ 'binding.cc' ],
 			'includes': [ 'auto.gypi' ],
             'include_dirs': [
-                             '<!@(pkg-config libmapper-0 --cflags-only-I | sed s/-I//g)',
+                             '<!@(pkg-config libmapper --cflags-only-I | sed s/-I//g)',
                              '/opt/local/include',
                              '/usr/local/include',
                             ],
             'libraries': [
-                          '<!@(pkg-config libmapper-0 --libs)',
+                          '<!@(pkg-config libmapper --libs)',
                           '-L/opt/local/lib',
                           '-L/usr/local/lib',
                          ]
