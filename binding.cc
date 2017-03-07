@@ -15,24 +15,16 @@
         { QUERY_FUNC(NAME, done)(_query); }                                 \
     operator MAPPER_TYPE(NAME)*() const                                     \
         { return _query; }                                                  \
-    bool operator==(const Query& rhs)                                       \
-        { return (_query == rhs._query); }                                  \
-    bool operator!=(const Query& rhs)                                       \
-        { return (_query != rhs._query); }                                  \
-    Query& operator++()                                                     \
+    bool done()                                                             \
+        { return (*this) ? false : true; }                                  \
+    bool next()                                                             \
     {                                                                       \
         if (_query)                                                         \
             _query = QUERY_FUNC(NAME, next)(_query);                        \
-        return (*this);                                                     \
+        return (*this) ? false : true;                                      \
     }                                                                       \
-    Query operator++(int)                                                   \
-        { Query tmp(*this); operator++(); return tmp; }                     \
-    CLASS_NAME operator*()                                                  \
+    CLASS_NAME deref()                                                      \
         { return CLASS_NAME(*_query); }                                     \
-    Query begin()                                                           \
-        { return (*this); }                                                 \
-    Query end()                                                             \
-        { return Query(0); }                                                \
                                                                             \
     /* Combination functions */                                             \
     Query& join(const Query& rhs)                                           \
@@ -56,48 +48,6 @@
         _query = QUERY_FUNC(NAME, difference)(_query, rhs_cpy);             \
         return (*this);                                                     \
     }                                                                       \
-    Query operator+(const Query& rhs) const                                 \
-    {                                                                       \
-        /* need to use copies of both queries */                            \
-        MAPPER_TYPE(NAME) *lhs_cpy = QUERY_FUNC(NAME, copy)(_query);        \
-        MAPPER_TYPE(NAME) *rhs_cpy = QUERY_FUNC(NAME, copy)(rhs._query);    \
-        return Query(QUERY_FUNC(NAME, union)(lhs_cpy, rhs_cpy));            \
-    }                                                                       \
-    Query operator*(const Query& rhs) const                                 \
-    {                                                                       \
-        /* need to use copies of both queries */                            \
-        MAPPER_TYPE(NAME) *lhs_cpy = QUERY_FUNC(NAME, copy)(_query);        \
-        MAPPER_TYPE(NAME) *rhs_cpy = QUERY_FUNC(NAME, copy)(rhs._query);    \
-        return Query(QUERY_FUNC(NAME, intersection)(lhs_cpy, rhs_cpy));     \
-    }                                                                       \
-    Query operator-(const Query& rhs) const                                 \
-    {                                                                       \
-        /* need to use copies of both queries */                            \
-        MAPPER_TYPE(NAME) *lhs_cpy = QUERY_FUNC(NAME, copy)(_query);        \
-        MAPPER_TYPE(NAME) *rhs_cpy = QUERY_FUNC(NAME, copy)(rhs._query);    \
-        return Query(QUERY_FUNC(NAME, difference)(lhs_cpy, rhs_cpy));       \
-    }                                                                       \
-    Query& operator+=(const Query& rhs)                                     \
-    {                                                                       \
-        /* need to use copy of rhs query */                                 \
-        MAPPER_TYPE(NAME) *rhs_cpy = QUERY_FUNC(NAME, copy)(rhs._query);    \
-        _query = QUERY_FUNC(NAME, union)(_query, rhs_cpy);                  \
-        return (*this);                                                     \
-    }                                                                       \
-    Query& operator*=(const Query& rhs)                                     \
-    {                                                                       \
-        /* need to use copy of rhs query */                                 \
-        MAPPER_TYPE(NAME) *rhs_cpy = QUERY_FUNC(NAME, copy)(rhs._query);    \
-        _query = QUERY_FUNC(NAME, intersection)(_query, rhs_cpy);           \
-        return (*this);                                                     \
-    }                                                                       \
-    Query& operator-=(const Query& rhs)                                     \
-    {                                                                       \
-        /* need to use copy of rhs query */                                 \
-        MAPPER_TYPE(NAME) *rhs_cpy = QUERY_FUNC(NAME, copy)(rhs._query);    \
-        _query = QUERY_FUNC(NAME, difference)(_query, rhs_cpy);             \
-        return (*this);                                                     \
-    }                                                                       \
                                                                             \
     CLASS_NAME operator [] (int idx)                                        \
         { return CLASS_NAME(QUERY_FUNC(NAME, index)(_query, idx)); }        \
@@ -114,16 +64,6 @@
         return vec;                                                         \
     }                                                                       \
                                                                             \
-    Query& set_user_data(void *user_data)                                   \
-    {                                                                       \
-        /* use a copy */                                                    \
-        MAPPER_TYPE(NAME) *cpy = QUERY_FUNC(NAME, copy)(_query);            \
-        while (cpy) {                                                       \
-            mapper_ ## NAME ## _set_user_data(*cpy, user_data);             \
-            cpy = QUERY_FUNC(NAME, next)(cpy);                              \
-        }                                                                   \
-        return (*this);                                                     \
-    }                                                                       \
     Query& push()                                                           \
     {                                                                       \
         /* use a copy */                                                    \
@@ -163,7 +103,7 @@ namespace mapper {
     {
     public:
         Network(const char *iface=0, const char *group=0, int port=0)
-            { _net = mapper_network_new(iface, group, port); _owned = 1; }
+            { _net = mapper_network_new(iface, group, port); _owned = true; }
         ~Network()
             { if (_owned && _net) mapper_network_free(_net); }
         operator mapper_network() const
@@ -178,10 +118,10 @@ namespace mapper {
         friend class Device;
         friend class Database;
         Network(mapper_network net)
-            { _net = net; _owned = 0; }
+            { _net = net; _owned = false; }
     private:
         mapper_network _net;
-        int _owned;
+        bool _owned;
     };
 
     class Timetag
@@ -238,11 +178,11 @@ namespace mapper {
 //                _map = 0;
 //                return;
 //            }
-//            mapper_signal cast[N];
+//            mapper_signal cast_src[N], cast_dst = destinations.data()[0];
 //            for (int i = 0; i < N; i++) {
-//                cast[i] = sources.data()[i];
+//                cast_src[i] = sources.data()[i];
 //            }
-//            _map = mapper_map_new(N, cast, 1, destinations.data()[0]);
+//            _map = mapper_map_new(N, cast_src, 1, &cast_dst);
 //        }
 //        template <typename T>
 //        Map(std::vector<T>& sources, std::vector<T>& destinations)
@@ -252,18 +192,14 @@ namespace mapper {
 //                return;
 //            }
 //            int num_sources = sources.size();
-//            mapper_signal cast[num_sources];
+//            mapper_signal cast_src[num_sources], cast_dst = destinations.data()[0];
 //            for (int i = 0; i < num_sources; i++) {
-//                cast[i] = sources.data()[i];
+//                cast_src[i] = sources.data()[i];
 //            }
-//            _map = mapper_map_new(num_sources, cast, 1, destinations.data()[0]);
+//            _map = mapper_map_new(num_sources, cast_src, 1, &cast_dst);
 //        }
         operator mapper_map() const
             { return _map; }
-        operator bool() const
-            { return _map; }
-        operator mapper_id() const
-            { return mapper_map_id(_map); }
         const Map& push() const
             { mapper_map_push(_map); return (*this); }
         const Map& refresh() const
@@ -295,49 +231,45 @@ namespace mapper {
             { mapper_map_set_process_location(_map, loc); return (*this); }
         mapper_id id() const
             { return mapper_map_id(_map); }
-        Map& set_user_data(void *user_data)
-            { mapper_map_set_user_data(_map, user_data); return (*this); }
-        void *user_data() const
-            { return mapper_map_user_data(_map); }
-//        class Query : public std::iterator<std::input_iterator_tag, int>
-//        {
-//        public:
-//            QUERY_METHODS(Map, map);
-//
-//                // also enable some Map methods
-//            Query& release()
-//            {
-//                    // use a copy
-//                mapper_map *cpy = mapper_map_query_copy(_query);
-//                while (cpy) {
-//                    mapper_map_release(*cpy);
-//                    cpy = mapper_map_query_next(cpy);
-//                }
-//                return (*this);
-//            }
-//            Query& set_expression(const char *expression)
-//            {
-//                    // use a copy
-//                mapper_map *cpy = mapper_map_query_copy(_query);
-//                while (cpy) {
-//                    mapper_map_set_expression(*cpy, expression);
-//                    cpy = mapper_map_query_next(cpy);
-//                }
-//                return (*this);
-//            }
-//            Query& set_mode(mapper_mode mode)
-//            {
-//                    // use a copy
-//                mapper_map *cpy = mapper_map_query_copy(_query);
-//                while (cpy) {
-//                    mapper_map_set_mode(*cpy, mode);
-//                    cpy = mapper_map_query_next(cpy);
-//                }
-//                return (*this);
-//            }
-//        private:
-//            mapper_map *_query;
-//        };
+        class Query : public std::iterator<std::input_iterator_tag, int>
+        {
+        public:
+            QUERY_METHODS(Map, map);
+
+            // also enable some specific Map methods
+            Query& release()
+            {
+                // use a copy
+                mapper_map *cpy = mapper_map_query_copy(_query);
+                while (cpy) {
+                    mapper_map_release(*cpy);
+                    cpy = mapper_map_query_next(cpy);
+                }
+                return (*this);
+            }
+            Query& set_expression(const char *expression)
+            {
+                    // use a copy
+                mapper_map *cpy = mapper_map_query_copy(_query);
+                while (cpy) {
+                    mapper_map_set_expression(*cpy, expression);
+                    cpy = mapper_map_query_next(cpy);
+                }
+                return (*this);
+            }
+            Query& set_mode(mapper_mode mode)
+            {
+                    // use a copy
+                mapper_map *cpy = mapper_map_query_copy(_query);
+                while (cpy) {
+                    mapper_map_set_mode(*cpy, mode);
+                    cpy = mapper_map_query_next(cpy);
+                }
+                return (*this);
+            }
+        private:
+            mapper_map *_query;
+        };
         class Slot
         {
         public:
@@ -435,10 +367,6 @@ namespace mapper {
             { _link = link; }
         operator mapper_link() const
             { return _link; }
-        operator bool() const
-            { return _link; }
-        operator mapper_id() const
-            { return mapper_link_id(_link); }
         const Link& push() const
             { mapper_link_push(_link); return (*this); }
         inline Device device(int idx) const;
@@ -446,19 +374,15 @@ namespace mapper {
             { return mapper_link_id(_link); }
         int num_maps() const
             { return mapper_link_num_maps(_link); }
-//        Map::Query maps() const
-//            { return Map::Query(mapper_link_maps(_link)); }
-        Link& set_user_data(void *user_data)
-            { mapper_link_set_user_data(_link, user_data); return (*this); }
-        void *user_data() const
-            { return mapper_link_user_data(_link); }
-//        class Query : public std::iterator<std::input_iterator_tag, int>
-//        {
-//        public:
-//            QUERY_METHODS(Link, link);
-//        private:
-//            mapper_link *_query;
-//        };
+        Map::Query maps() const
+            { return Map::Query(mapper_link_maps(_link)); }
+        class Query : public std::iterator<std::input_iterator_tag, int>
+        {
+        public:
+            QUERY_METHODS(Link, link);
+        private:
+            mapper_link *_query;
+        };
     protected:
         friend class Database;
     private:
@@ -477,17 +401,17 @@ namespace mapper {
             { _sig = orig._sig; }
         operator mapper_signal() const
             { return _sig; }
-        operator bool() const
-            { return _sig ? true : false; }
         inline Device device() const;
-//        Map::Query maps(mapper_direction dir=MAPPER_DIR_ANY) const
-//            { return Map::Query(mapper_signal_maps(_sig, dir)); }
+        Map::Query maps(int dir=MAPPER_DIR_ANY) const
+        {
+            return Map::Query(mapper_signal_maps(_sig, (mapper_direction)dir));
+        }
 
         mapper_id id() const
             { return mapper_signal_id(_sig); }
         const char *name() const
             { return mapper_signal_name(_sig); }
-        mapper_direction direction() const
+        int direction() const
             { return mapper_signal_direction(_sig); }
         char type() const
             { return mapper_signal_type(_sig); }
@@ -549,22 +473,18 @@ namespace mapper {
             { return mapper_signal_query_remotes(_sig, MAPPER_NOW); }
         int query_remotes(Timetag tt) const
             { return mapper_signal_query_remotes(_sig, *tt); }
-        Signal& set_user_data(void *user_data)
-            { mapper_signal_set_user_data(_sig, user_data); return (*this); }
-        void *user_data() const
-            { return mapper_signal_user_data(_sig); }
         Signal& set_callback(nbind::cbFunction& cb)
         {
-            void *callback = user_data();
+            void *callback = mapper_signal_user_data(_sig);
             if (callback)
                 delete((nbind::cbFunction*)callback);
             callback = new nbind::cbFunction(cb);
-            this->set_user_data(callback);
+            mapper_signal_set_user_data(_sig, callback);
             mapper_signal_set_callback(_sig, update_handler);
             return (*this);
         }
-        int num_maps(mapper_direction dir=MAPPER_DIR_ANY) const
-            { return mapper_signal_num_maps(_sig, dir); }
+        int num_maps(int dir=MAPPER_DIR_ANY) const
+            { return mapper_signal_num_maps(_sig, (mapper_direction)dir); }
         float rate()
             { return mapper_signal_rate(_sig); }
         Signal& set_rate(int rate)
@@ -655,13 +575,13 @@ namespace mapper {
         Instance instance()
         {
             mapper_id id = mapper_device_generate_unique_id(mapper_signal_device(_sig));
-                // TODO: wait before activating instance?
+            // TODO: wait before activating instance?
             mapper_signal_instance_set_user_data(_sig, id, 0);
             return Instance(_sig, id);
         }
         Instance instance(mapper_id id)
         {
-                // TODO: wait before activating instance?
+            // TODO: wait before activating instance?
             mapper_signal_instance_set_user_data(_sig, id, 0);
             return Instance(_sig, id);
         }
@@ -732,31 +652,6 @@ void update_handler(mapper_signal sig, mapper_id instance, const void *value,
     (*cb)(mapper::Signal(sig), *(int*)value);
 };
 
-//class Device : public mapper::Device
-//{
-//public:
-//    class Query : public mapper::Device::Query
-//    {
-//    public:
-//        Query(mapper_device *query) : mapper::Device::Query(query)
-//            { printf("Device::Query()\n"); }
-//        bool check()
-//            { return (*this); }
-//        bool next()
-//        {
-//            printf("Device::Query::next()\n");
-//            Device temp = (Device)(mapper::Device)(*this);
-//            (*this)++;
-//            return temp;
-//        }
-//        Device deref()
-//        {
-//            printf("Device::Query::deref()\n");
-//            return (Device)(mapper::Device)(*this);
-//        }
-//    };
-//};
-
 namespace mapper {
     class Device
     {
@@ -805,24 +700,16 @@ namespace mapper {
         }
         operator mapper_device() const
             { return _dev; }
-        operator const char*() const
-            { return mapper_device_name(_dev); }
-        operator mapper_id() const
-            { return mapper_device_id(_dev); }
 
-        Device& set_user_data(void *user_data)
-            { mapper_device_set_user_data(_dev, user_data); return (*this); }
-        void *user_data() const
-            { return mapper_device_user_data(_dev); }
-
-        Signal add_signal(mapper_direction dir, int num_instances,
+        Signal add_signal(int dir, int num_instances,
                           const char *name, int length, const char *type,
                           nbind::cbFunction& cb)
         {
             void *callback = new nbind::cbFunction(cb);
-            return mapper_device_add_signal(_dev, dir, num_instances,
-                                            name, length, type[0], 0, 0, 0,
-                                            update_handler, callback);
+            return mapper_device_add_signal(_dev, (mapper_direction)dir,
+                                            num_instances, name, length,
+                                            type[0], 0, 0, 0, update_handler,
+                                            callback);
         }
         Signal add_input_signal(const char *name, int length, const char *type,
                                 nbind::cbFunction& cb)
@@ -846,19 +733,22 @@ namespace mapper {
         Network network() const
             { return Network(mapper_device_network(_dev)); }
 
-        int num_signals(mapper_direction dir=MAPPER_DIR_ANY) const
-            { return mapper_device_num_signals(_dev, dir); }
-        int num_links(mapper_direction dir=MAPPER_DIR_ANY) const
-            { return mapper_device_num_links(_dev, dir); }
-        int num_maps(mapper_direction dir=MAPPER_DIR_ANY) const
-            { return mapper_device_num_maps(_dev, dir); }
+        int num_signals(int dir=MAPPER_DIR_ANY) const
+            { return mapper_device_num_signals(_dev, (mapper_direction)dir); }
+        int num_links(int dir=MAPPER_DIR_ANY) const
+            { return mapper_device_num_links(_dev, (mapper_direction)dir); }
+        int num_maps(int dir=MAPPER_DIR_ANY) const
+            { return mapper_device_num_maps(_dev, (mapper_direction)dir); }
 
         Signal signal(const char *name)
             { return Signal(mapper_device_signal_by_name(_dev, name)); }
         Signal signal(mapper_id id)
             { return Signal(mapper_device_signal_by_id(_dev, id)); }
-        Signal::Query signals(mapper_direction dir=MAPPER_DIR_ANY) const
-            { return Signal::Query(mapper_device_signals(_dev, dir)); }
+        Signal::Query signals(int dir=MAPPER_DIR_ANY) const
+        {
+            return Signal::Query(mapper_device_signals(_dev,
+                                                       (mapper_direction)dir));
+        }
 
         Device& set_link_callback(nbind::cbFunction& cb)
         {
@@ -880,10 +770,14 @@ namespace mapper {
         {
             return Link(mapper_device_link_by_remote_device(_dev, remote._dev));
         }
-//        Link::Query links(mapper_direction dir=MAPPER_DIR_ANY) const
-//            { return Link::Query(mapper_device_links(_dev, dir)); }
-//        Map::Query maps(mapper_direction dir=MAPPER_DIR_ANY) const
-//            { return Map::Query(mapper_device_maps(_dev, dir)); }
+        Link::Query links(int dir=MAPPER_DIR_ANY) const
+        {
+            return Link::Query(mapper_device_links(_dev, (mapper_direction)dir));
+        }
+        Map::Query maps(int dir=MAPPER_DIR_ANY) const
+        {
+            return Map::Query(mapper_device_maps(_dev, (mapper_direction)dir));
+        }
 
         int poll(int block_ms=0) const
             { return mapper_device_poll(_dev, block_ms); }
@@ -908,13 +802,13 @@ namespace mapper {
         Device& send_queue(Timetag tt)
             { mapper_device_send_queue(_dev, *tt); return (*this); }
 
-//        class Query : public std::iterator<std::input_iterator_tag, int>
-//        {
-//        public:
-//            QUERY_METHODS(Device, device);
-//        private:
-//            mapper_device *_query;
-//        };
+        class Query : public std::iterator<std::input_iterator_tag, int>
+        {
+        public:
+            QUERY_METHODS(Device, device);
+        private:
+            mapper_device *_query;
+        };
     private:
         mapper_device _dev;
         mapper_database _db;
@@ -1032,12 +926,10 @@ namespace mapper {
 
         int num_devices() const
             { return mapper_database_num_devices(_db); }
-        Device device(mapper_id id) const
-            { return Device(mapper_database_device_by_id(_db, id)); }
         Device device(const char *name) const
             { return Device(mapper_database_device_by_name(_db, name)); }
-//        Device::Query devices() const
-//            { return Device::Query(mapper_database_devices(_db)); }
+        Device::Query devices() const
+            { return Device::Query(mapper_database_devices(_db)); }
 //        Device::Query devices(const char *name) const
 //        {
 //            return Device::Query(mapper_database_devices_by_name(_db, name));
@@ -1064,12 +956,13 @@ namespace mapper {
             return (*this);
         }
 
-        int num_signals(mapper_direction dir=MAPPER_DIR_ANY) const
-            { return mapper_database_num_signals(_db, dir); }
-        Signal signal(mapper_id id) const
-            { return Signal(mapper_database_signal_by_id(_db, id)); }
-//        Signal::Query signals(mapper_direction dir=MAPPER_DIR_ANY) const
-//            { return Signal::Query(mapper_database_signals(_db, dir)); }
+        int num_signals(int dir=MAPPER_DIR_ANY) const
+            { return mapper_database_num_signals(_db, (mapper_direction)dir); }
+        Signal::Query signals(int dir=MAPPER_DIR_ANY) const
+        {
+            return Signal::Query(mapper_database_signals(_db,
+                                                         (mapper_direction)dir));
+        }
 //        Signal::Query signals(const char *name) const
 //        {
 //            return Signal::Query(mapper_database_signals_by_name(_db, name));
@@ -1100,8 +993,10 @@ namespace mapper {
             { return mapper_database_num_links(_db); }
         Link link(mapper_id id) const
             { return Link(mapper_database_link_by_id(_db, id)); }
-//        Link::Query links() const
-//            { return Link::Query(mapper_database_links(_db)); }
+        Link::Query links() const
+        {
+            return Link::Query(mapper_database_links(_db));
+        }
 //        Link::Query links(const Property& p, mapper_op op) const
 //        {
 //            return Link::Query(
@@ -1128,8 +1023,8 @@ namespace mapper {
             { return mapper_database_num_maps(_db); }
         Map map(mapper_id id) const
             { return Map(mapper_database_map_by_id(_db, id)); }
-//        Map::Query maps() const
-//            { return Map::Query(mapper_database_maps(_db)); }
+        Map::Query maps() const
+            { return Map::Query(mapper_database_maps(_db)); }
 //        Map::Query maps(const Property& p, mapper_op op) const
 //        {
 //            return Map::Query(
@@ -1203,93 +1098,102 @@ namespace mapper {
     }
 }
 
-namespace mapper {
-    NBIND_CLASS(Network) {
-        construct<const char *, const char *, int>();
-        construct<const char *, const char *>();
-        construct<const char *>();
-        construct<>();
 
-        getter(interface);
-//        getter(ip4);
-        getter(group);
-        getter(port);
-    }
+NBIND_CLASS(mapper::Network, Network) {
+    construct<const char *, const char *, int>();
+    construct<const char *, const char *>();
+    construct<const char *>();
+    construct<>();
 
-    NBIND_CLASS(Timetag) {
-        construct<unsigned long int, unsigned long int>();
-        construct<double>();
-        construct<>();
-
-        getset(sec, set_sec);
-        getset(frac, set_frac);
-        method(now);
-        method(get_double);
-    }
+    getter(interface);
+    getter(group);
+    getter(port);
 }
 
-namespace mapper {
-    NBIND_CLASS(Device) {
-//        construct<const char *, Network&>();
-        construct<const char *>();
+NBIND_CLASS(mapper::Timetag, Timetag) {
+    construct<unsigned long int, unsigned long int>();
+    construct<double>();
+    construct<>();
 
-        method(add_signal);
-        method(add_input_signal);
-        method(add_output_signal);
-        method(remove_signal);
-//        getter(num_properties);
-//        method(clear_staged_properties);
-        method(push);
-    //    method(network);
-        method(num_signals);
-        method(num_links);
-        method(num_maps);
-    //    method(signal_by_name, "signal");
-    //    method(signal_by_id, "signal");
-    ////    method(signals);
-    //    method(set_link_callback);
-    //    method(set_map_callback);
-    //    method(link);
-    ////    method(links);
-    ////    method(maps);
-        method(poll);
-        getter(ready);
-        method(name);
-        getter(name);
-        getter(id);
-        getter(port);
-        getter(ordinal);
-        method(start_queue);
-        method(send_queue);
-    }
+    getset(sec, set_sec);
+    getset(frac, set_frac);
+    method(now);
+    method(get_double);
 }
-//
-//NBIND_CLASS(Device::Query, Query) {
-//    construct<mapper_device*>();
-//    method(next);
-//    method(deref);
-//    method(check);
-//}
 
-namespace mapper {
-    NBIND_CLASS(Signal) {
-        method(device);
-    //    method(maps);
-        getter(id);
-        method(name);
-        getter(name);
-        getter(direction);
-        getter(type);
-        getter(length);
-        multimethod(update, args(int));
-    //    method(value);
-        method(set_callback);
-        method(num_maps);
-    //    getset(minimum, set_minimum);
-    //    getset(maximum, set_maximum);
-        getset(rate, set_rate);
-//        method(clear_staged_properties);
-    }
+NBIND_CLASS(mapper::Device::Query, Device_Query) {
+    construct<mapper_device*>();
+    method(next);
+    method(done);
+    method(deref);
+}
+
+NBIND_CLASS(mapper::Device, Device) {
+//    construct<const char *, Network&>();
+    construct<const char *>();
+
+
+    method(add_signal);
+    method(add_input_signal);
+    method(add_output_signal);
+    method(remove_signal);
+//    getter(num_properties);
+//    method(clear_staged_properties);
+    method(push);
+//    method(network);
+    method(num_signals);
+    method(num_links);
+    multimethod(num_maps, args(int));
+//    method(signal_by_name, "signal");
+//    method(signal_by_id, "signal");
+    method(signals);
+//    method(set_link_callback);
+//    method(set_map_callback);
+//    method(link);
+    multimethod(links, args(int));
+    multimethod(maps, args(int));
+    method(poll);
+    getter(ready);
+    method(name);
+    getter(name);
+    getter(id);
+    getter(port);
+    getter(ordinal);
+    method(start_queue);
+    method(send_queue);
+}
+
+NBIND_CLASS(mapper::Signal::Query, Signal_Query) {
+    construct<mapper_signal*>();
+    method(next);
+    method(done);
+    method(deref);
+}
+
+NBIND_CLASS(mapper::Signal, Signal) {
+    method(device);
+//    method(maps);
+    getter(id);
+    method(name);
+    getter(name);
+    getter(direction);
+    getter(type);
+    getter(length);
+    multimethod(update, args(int));
+//    method(value);
+    method(set_callback);
+    multimethod(num_maps, args(int));
+//    getset(minimum, set_minimum);
+//    getset(maximum, set_maximum);
+    getset(rate, set_rate);
+//    method(clear_staged_properties);
+}
+
+NBIND_CLASS(mapper::Link::Query, Link_Query) {
+    construct<mapper_link*>();
+    method(next);
+    method(done);
+    method(deref);
 }
 
 NBIND_CLASS(mapper::Link, Link) {
@@ -1302,38 +1206,43 @@ NBIND_CLASS(mapper::Link, Link) {
 //    method(maps);
 }
 
-namespace mapper {
-    NBIND_CLASS(Map) {
-    ////        construct<const Map>();
-        construct<Signal, Signal>();
-    //    construct<std::vector<Signal>&, Signal>();
-    //    method(clear_staged_properties);
-        method(push);
-        method(refresh);
-        method(release);
-        method(num_sources);
-        method(num_destinations);
-        method(ready);
-        method(set_mode);
-        getset(mode, set_mode);
-        method(set_expression);
-        getset(expression, set_expression);
-        method(set_muted);
-        getset(muted, set_muted);
-        method(set_process_location);
-        getset(process_location, set_process_location);
-    //    method(num_properties);
-        getter(id);
-        method(source);
-        method(destination);
-    }
+NBIND_CLASS(mapper::Map::Query, Map_Query) {
+    construct<mapper_map*>();
+    method(next);
+    method(done);
+    method(deref);
+}
+
+NBIND_CLASS(mapper::Map, Map) {
+//    construct<const Map>();
+    construct<mapper::Signal, mapper::Signal>();
+//    construct<std::vector<Signal>&, Signal>();
+//    method(clear_staged_properties);
+    method(push);
+    method(refresh);
+    method(release);
+    method(num_sources);
+    method(num_destinations);
+    method(ready);
+    method(set_mode);
+    getset(mode, set_mode);
+    method(set_expression);
+    getset(expression, set_expression);
+    method(set_muted);
+    getset(muted, set_muted);
+    method(set_process_location);
+    getset(process_location, set_process_location);
+//    method(num_properties);
+    getter(id);
+    method(source);
+    method(destination);
 }
 
 NBIND_CLASS(mapper::Map::Slot, Slot) {
     getset(bound_min, set_bound_min);
     getset(bound_max, set_bound_max);
-//        getset(minimum, set_minimum);
-//        getset(maximum, set_maximum);
+//    getset(minimum, set_minimum);
+//    getset(maximum, set_maximum);
     getset(calibrating, set_calibrating);
     getset(causes_update, set_causes_update);
     getset(use_instances, set_use_instances);
@@ -1350,22 +1259,23 @@ NBIND_CLASS(mapper::Database, Database) {
 //    method(unsubscribe);
     method(add_device_callback);
     method(remove_device_callback);
+    getter(num_devices);
     method(num_devices);
-//    method(device);
-//    method(devices);
+    method(device);
+    method(devices);
     method(add_signal_callback);
     method(remove_signal_callback);
-    method(num_signals);
-//    method(signal);
-//    method(signals);
+//    getter(num_signals);
+    multimethod(num_signals, args(int));
+    multimethod(signals, args(int));
     method(add_link_callback);
     method(remove_link_callback);
+    getter(num_links);
     method(num_links);
-//    method(link);
-//    method(links);
+    method(links);
     method(add_map_callback);
     method(remove_map_callback);
+    getter(num_maps);
     method(num_maps);
-//    method(map);
-//    method(maps);
+    method(maps);
 }

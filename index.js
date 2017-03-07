@@ -56,36 +56,63 @@ db.add_map_callback(function(map, event){
                         console.log("  action: "+event);
                      });
 
-
-//console.log("done adding callbacks");
-
 for (i = 0; i < 100; i++) {
-    db.poll(100);
+    db.poll(10);
     dev.poll(10);
 }
-//
-//function* foo(arg) {
-//    console.log("  devices()");
-//    var devs = arg;
-//    var got_next = arg.check();
-//    while(got_next) {
-//        console.log("  iterating!!!");
-//        var dev = new lib.Device(devs.deref());
-//        got_next = devs.next();
-//        yield dev;
-//    }
-//}
-//
-//console.log("db.devices()");
-//var devs = foo(db.devices());
-//
-//for(value of devs){
-//    console.log(value);
-//    for (i in value)
-//        console.log("  ", i);
-//    console.log("  try to retrieve name...");
-//    console.log("  ", value['name']);
-//}
+
+function iterator(arg) {
+    var q = arg;
+    this.done = q.done();
+    this.next = function() {
+        if (this.done) {
+            return undefined;
+        }
+        else {
+            var obj = q.deref();
+            this.done = q.next();
+            return obj;
+        }
+    }
+};
+
+console.log(db.num_devices+" devices in database:");
+var devs = new iterator(db.devices());
+while (!devs.done) {
+    console.log("  "+devs.next().name);
+}
+
+var direction = {
+    any:                0x00,
+    incoming:       	0x01,
+    outgoing:       	0x02,
+    both:               0x03
+};
+
+console.log(db.num_signals(direction.any)+" signals in database:");
+var sigs = new iterator(db.signals(direction.any));
+while (!sigs.done) {
+    var sig = sigs.next();
+    var dir = sig.direction == direction.incoming ? " (input)" : " (output)";
+    console.log("  "+sig.name+dir);
+}
+
+console.log(db.num_links+" links in database:");
+var links = new iterator(db.links());
+while (!links.done) {
+    var link = links.next();
+    console.log("  "+link.device(0).name+" <-> "+link.device(1).name);
+}
+
+console.log(db.num_maps+" maps in database:");
+var maps = new iterator(db.maps());
+while (!maps.done) {
+    var map = maps.next();
+    var src = map.source(0).signal();
+    var dst = map.destination(0).signal();
+    console.log("  "+src.device().name+"/"+src.name+" -> "+dst.device().name+"/"+dst.name);
+}
+
 //
 //
 //var objectType = {
@@ -134,13 +161,6 @@ for (i = 0; i < 100; i++) {
 //    undefined:          0x00,
 //    source:             0x01,
 //    destination:        0x02
-//};
-//
-//var direction = {
-//    any:                0x00,
-//    incoming:       	0x01,
-//    outgoing:       	0x02,
-//    both:               0x03
 //};
 //
 //var instanceEvent = {
