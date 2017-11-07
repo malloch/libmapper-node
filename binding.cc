@@ -207,10 +207,8 @@ namespace mapper {
         // this function can be const since it only sends the unmap msg
         void release() const
             { mapper_map_release(_map); }
-        int num_sources() const
-            { return mapper_map_num_sources(_map); }
-        int num_destinations() const
-            { return mapper_map_num_destinations(_map); }
+        int num_slots(mapper_location loc=MAPPER_LOC_ANY) const
+            { return mapper_map_num_slots(_map, loc); }
         bool ready() const
             { return mapper_map_ready(_map); }
         mapper_mode mode() const
@@ -1221,8 +1219,7 @@ NBIND_CLASS(mapper::Map, Map) {
     method(push);
     method(refresh);
     method(release);
-    method(num_sources);
-    method(num_destinations);
+    method(num_slots);
     method(ready);
     method(set_mode);
     getset(mode, set_mode);
